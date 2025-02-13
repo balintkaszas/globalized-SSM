@@ -1,0 +1,340 @@
+import sympy as sy
+from itertools import product
+import numpy as np
+import scipy.interpolate as scip
+from taylor_to_pade.utils import generate_powers_uptoorder_square, generate_polynomial_from_indexed
+import time
+from sympy.polys.matrices.linsolve import _linear_eq_to_dict
+from sympy.matrices import zeros, Matrix, MatrixBase
+import scipy as sc
+
+class Coefficient:
+    """ A class to represent a coefficient in a power series. Contains two representations.
+    
+    """
+    def __init__(self, name, dimensions):
+        """ Initialize the coefficient with a name and the number of dimensions. """
+        # needed to keep track of yet undetermined coefficients
+        self.indices = [sy.symbols('i_%s' %ii, cls=sy.Idx) for ii in range(dimensions)] # i_1, i_2, ...
+        self.Indexed = sy.Indexed(name, tuple(self.indices)) # n_{ijk}
+        self.coefficient_tensor = None # the actual tensor of coefficients, empty at initialization
+    def set_coefficient_tensor(self, tensor):
+        self.coefficient_tensor = tensor
+    
+
+def pade_lsq(an, m, n=None):
+ 
+    an = np.asarray(an)
+    if n is None:
+        n = len(an) - 1 - m
+        if n < 0:
+            raise ValueError("Order of q <m> must be smaller than len(an)-1.")
+    if n < 0:
+        raise ValueError("Order of p <n> must be greater than 0.")
+    N = m + n
+    if N > len(an)-1:
+        raise ValueError("Order of q+p <m+n> must be smaller than len(an).")
+    an = an[:N+1]
+    Akj = np.eye(N+1, n+1, dtype=an.dtype)
+    Bkj = np.zeros((N+1, m), dtype=an.dtype)
+    for row in range(1, m+1):
+        Bkj[row,:row] = -(an[:row])[::-1]
+    for row in range(m+1, N+1):
+        Bkj[row,:] = -(an[row-m:row])[::-1]
+    C = np.hstack((Akj, Bkj))
+    pq, c1, c2, c3 = np.linalg.lstsq(C, an, rcond=-1)
+    p = pq[:n+1]
+    q = np.r_[1.0, pq[n+1:]]
+    return np.poly1d(p[::-1]), np.poly1d(q[::-1])
+
+
+def robust_pade(an, m, n = None, tol = 1e-30):
+    # Based on the chebfun implementation of the robust Pade approximant
+    if n is None:
+        n = len(an) - 1 - m
+        if n < 0:
+            raise ValueError("Order of q <m> must be smaller than len(an)-1.")
+    if n < 0:
+        raise ValueError("Order of p <n> must be greater than 0.")
+    N = m + n
+    if N > len(an)-1:
+        raise ValueError("Order of q+p <m+n> must be smaller than len(an).")
+    an = an[:N+1]
+    
+    # Ensure that an has enough length
+    c = np.concatenate([an[:], np.zeros(m + n + 1 - len(an))])
+    c = c[:m + n + 1]
+
+    # Compute absolute tolerance
+    ts = tol * np.linalg.norm(c)
+
+    if np.linalg.norm(c[:m+1], np.inf) <= tol * np.linalg.norm(c, np.inf):  # Special case r = 0
+        a = np.array([0])
+        b = np.array([1])
+        mu = -np.inf
+        nu = 0
+    else:  # General case
+        row = np.concatenate([[c[0]], np.zeros(n)])
+        col = c
+
+        Z = sc.linalg.toeplitz(col[:m+n+1], row[:n+1])
+
+        C = Z[m+1:m+n+1, :]
+
+        if n > 0:
+            U, S, V = np.linalg.svd(C, full_matrices=True)
+            # Null vector gives b
+            b = V[-1,:]
+            # Reweighted QR for better zero preservation
+            D = np.diag(np.abs(b) + np.sqrt(np.finfo(float).eps))
+            Q, R = np.linalg.qr((C @ D).T)
+
+            # Compensate for reweighting
+            b = D @ Q[:, -1]
+            b /= np.linalg.norm(b)
+
+            # Compute a
+            a = Z[:m+1, :n+1] @ b
+            
+
+    return np.poly1d(a[::-1]), np.poly1d(b[::-1])
+
+
+def vector_pade(taylor_coeffs):
+    return
+
+
+def convert_to_pade_1d(taylor_coeffs, order_numerator, order_denominator, use_robust = False):
+    """ Convert a Taylor series to a Pade approximant in 1D. """
+    if use_robust:
+        numerator, denominator = robust_pade(taylor_coeffs, m = order_numerator, n = order_denominator)    
+    else:
+        numerator, denominator = pade_lsq(taylor_coeffs, m = order_numerator, n = order_denominator)
+    return numerator, denominator
+
+def generate_equations_LHS_alpha_beta_1(indexed_coeff, r, s, taylor_coeff):
+    lhs = 0
+    
+    for k in range(0, r + 1):
+        for n1 in range(0, k + 1):
+            lhs += indexed_coeff.Indexed.subs([(indexed_coeff.indices[0], n1),
+                                               (indexed_coeff.indices[1], k - n1)
+                                                ]) * taylor_coeff[s - n1, r - k - s + n1]
+    return lhs
+
+
+
+def generate_equations_LHS_alpha_beta_1_robust(indexed_coeff, order_denom, r, s, taylor_coeff):
+    lhs = 0
+    for k in range(0, r + 1):
+        for n1 in range(0, k + 1):
+            if k <= order_denom:
+                lhs += indexed_coeff.Indexed.subs([(indexed_coeff.indices[0], n1),
+                                               (indexed_coeff.indices[1], k - n1)
+                                                ]) * taylor_coeff[s - n1, r - k - s + n1]
+    return lhs
+
+def generate_equations_LHS_alpha_beta_2(indexed_coeff, order_denom, r, s, taylor_coeff):
+    lhs = 0
+    for k in range(0, order_denom +1 ):
+        for n1 in range(0, k + 1):
+            lhs += indexed_coeff.Indexed.subs([(indexed_coeff.indices[0], n1),
+                                               (indexed_coeff.indices[1], k - n1)
+                                                ]) * taylor_coeff[s - n1, r - k - s + n1]
+    return lhs
+
+def generate_equations_robust_denominator(order_numerator, order_denominator, denominator_coeff, taylor_coeffs):
+    # set up the homogeneous equations. 
+    eq = []
+    for r in range(order_numerator+1, order_numerator  + order_denominator + 1):
+        for s in range(r + 1):
+            lhs = generate_equations_LHS_alpha_beta_2(denominator_coeff, order_denominator, r, s, taylor_coeffs)
+            #print("eq2:", s, r-s)
+
+            if lhs != 0:  # exclude the trivial equation 0=0
+                eq.append(sy.Eq(lhs, 0))
+
+    return eq
+
+def generate_symbols_robust(order_numerator, order_denominator, denominator_coeff):
+    orders_for_numerator = generate_powers_uptoorder_bivariate(order_numerator)
+    orders_for_denominator = generate_powers_uptoorder_bivariate(order_denominator)
+    symbs = []
+    for pp in orders_for_denominator:
+        symbs.append(denominator_coeff.Indexed.subs([(denominator_coeff.indices[0], pp[0]),
+                                                  (denominator_coeff.indices[1], pp[1])]))
+    num_symbols = len(symbs)
+
+    vectorized_symbols = sy.symbols('a0:%s' %num_symbols)
+    return symbs, vectorized_symbols
+
+def substitute_numerator_coeffs(order_numerator, order_denominator, numerator_coeff, numerator_polynomial, denominator_coeff, taylor_coeffs):
+    for r in range(0, order_numerator+1):
+        for s in range(0, r+1):
+            #print("eq1:", s, r-s)
+            rhs = numerator_coeff.Indexed.subs([(numerator_coeff.indices[0], s), (numerator_coeff.indices[1], r - s)])
+            lhs = generate_equations_LHS_alpha_beta_1_robust(denominator_coeff,order_denominator, r, s, taylor_coeffs)
+            numerator_polynomial = numerator_polynomial.subs(rhs, lhs)
+    return numerator_polynomial
+
+
+def generate_equations(order_numerator, order_denominator, numerator_coeff, denominator_coeff, taylor_coeffs):
+    eq1 = []
+    for r in range(0, order_numerator+1):
+        for s in range(0, r+1):
+            #print("eq1:", s, r-s)
+            rhs = numerator_coeff.Indexed.subs([(numerator_coeff.indices[0], s), (numerator_coeff.indices[1], r - s)])
+            lhs = generate_equations_LHS_alpha_beta_1(denominator_coeff, r, s, taylor_coeffs)
+            ee = sy.Eq(lhs, rhs)
+            if ee is not True:
+                eq1.append(ee)
+    eq2 = []
+    for r in range(order_numerator+1, order_denominator  + order_denominator + 1):
+        for s in range(r + 1):
+            lhs = generate_equations_LHS_alpha_beta_2(denominator_coeff, order_denominator, r, s, taylor_coeffs)
+            #print("eq2:", s, r-s)
+
+            if lhs != 0:  # exclude the trivial equation 0=0
+                eq2.append(sy.Eq(lhs, 0))
+
+    return eq1 + eq2
+
+
+def generate_symbols(order_numerator, order_denominator, numerator_coeff, denominator_coeff):
+    orders_for_numerator = generate_powers_uptoorder_bivariate(order_numerator)
+    symbs = [numerator_coeff.Indexed.subs([(numerator_coeff.indices[0], pp[0]),
+                                    (numerator_coeff.indices[1], pp[1])]) for pp in orders_for_numerator]
+    orders_for_denominator = generate_powers_uptoorder_bivariate(order_denominator)
+    for pp in orders_for_denominator:
+        if pp[0] != 0 or pp[1] != 0: # exclude d_00
+            symbs.append(denominator_coeff.Indexed.subs([(denominator_coeff.indices[0], pp[0]),
+                                                  (denominator_coeff.indices[1], pp[1])]))
+    num_symbols = len(symbs)
+
+    vectorized_symbols = sy.symbols('a0:%s' %num_symbols)
+    return symbs, vectorized_symbols
+
+def swap_symbols_in_equations(equations, symbols, vectorized_symbols):
+    # Create a dictionary for symbol substitution
+    substitution_dict = {symbol: vectorized_symbol for symbol, vectorized_symbol in zip(symbols, vectorized_symbols)}
+
+    # Perform symbol substitution for each equation
+    eqq = [eq.subs(substitution_dict) for eq in equations]
+
+    return eqq
+
+
+def prepare_linear_system(equations, vectorized_symbols):
+    eq, c = _linear_eq_to_dict(equations, vectorized_symbols) # this bit is copied from sympy without the type check
+    # was AB = sy.linear_eq_to_matrix(equations, vectorized_symbols)
+
+    n, m = shape = len(eq), len(vectorized_symbols)
+    ix = dict(zip(vectorized_symbols, range(m)))
+    A = zeros(*shape)
+    for row, d in enumerate(eq):
+        for k in d:
+            col = ix[k]
+            A[row, col] = d[k]
+    b = Matrix(n, 1, [-i for i in c])
+    
+    
+    A = np.array(A, dtype = complex)
+    b = np.array(b, dtype = complex)
+    return A, b
+
+
+
+
+def generate_powers_uptoorder_bivariate(M):
+    pows = []
+    for m in range(M+1):
+        for s in range(m+1):
+            pows.append([s, m-s])
+    return np.array(pows)
+
+
+
+
+def convert_to_pade_2d(variables, taylor_coeffs, order_numerator, order_denominator, numerator_coeff, denominator_coeff ):
+    start = time.time()
+    #print('Start')
+    equations = generate_equations(order_numerator, order_denominator, numerator_coeff, denominator_coeff, taylor_coeffs)
+    one = time.time()
+    #print('equations1', one - start)
+    symbols, vectorized_symbols = generate_symbols(order_numerator, order_denominator, numerator_coeff, denominator_coeff)
+    one = time.time()
+    #print('equations2', one - start)
+    equations = [e.subs(denominator_coeff.Indexed.subs([(denominator_coeff.indices[0], 0),
+                                                         (denominator_coeff.indices[1],0)]),
+                                                           1) for e in equations] # fix d_00 = 1
+    coeffmatrix, rhsvector = prepare_linear_system(equations, symbols)
+
+    two = time.time()
+    #print('linear system', two - start)
+    
+
+    solution, aaa, _, _ = np.linalg.lstsq(coeffmatrix, rhsvector, rcond = None)
+    print(rhsvector.shape)
+
+    three = time.time()
+    #print('LSTSQ', three - start)
+
+
+    numerator_function = generate_polynomial_from_indexed(variables,numerator_coeff, order_numerator, include_bias=True)
+    denominator_function = generate_polynomial_from_indexed(variables, denominator_coeff, order_denominator, include_bias=False) # set d_00 = 1
+    #pade_function = numerator_function / denominator_function
+    numerator_function = numerator_function.subs(
+        [(old, new) for old,new in zip(symbols, 
+                                       solution.ravel())]
+    )
+    denominator_function = denominator_function.subs(
+        [(old, new) for old,new in zip(symbols, 
+                                       solution.ravel())]
+    )
+    
+    return numerator_function, denominator_function
+
+
+
+def convert_to_pade_2d_robust(variables, taylor_coeffs, order_numerator, order_denominator, numerator_coeff, denominator_coeff ):
+    start = time.time()
+    #print('Start')
+    equations_denom = generate_equations_robust_denominator(order_numerator, order_denominator, denominator_coeff, taylor_coeffs)
+    one = time.time()
+    #print('equations1', one - start)
+    symbols_denom, vectorized_symbols_denom = generate_symbols_robust(order_numerator, order_denominator, denominator_coeff)
+    one = time.time()
+    coeffmatrix, rhsvector = prepare_linear_system(equations_denom, symbols_denom) # rhsvector is simply zero here. 
+
+    U, S, V = np.linalg.svd(coeffmatrix, full_matrices=True)
+    # Null vector gives b
+    b = V[-1,:]
+    # Reweighted QR for better zero preservation
+    D = np.diag(np.abs(b) + np.sqrt(np.finfo(float).eps))
+    Q, R = np.linalg.qr((coeffmatrix @ D).T)
+    two = time.time()
+    #print('linear system', two - start)
+        # Compensate for reweighting
+    b = D @ Q[:, -1]
+    b /= np.linalg.norm(b)
+    denominator_function = generate_polynomial_from_indexed(variables, denominator_coeff, order_denominator, include_bias=True) # set d_00 = 1
+    denominator_function = denominator_function.subs(
+        [(old, new) for old,new in zip(symbols_denom, 
+                                       b.ravel())]
+    )
+    #print(symbols_denom)
+
+    
+    
+    #print(denominator_function)
+    numerator_function = generate_polynomial_from_indexed(variables,numerator_coeff, order_numerator, include_bias=True)
+    #pade_function = numerator_function / denominator_function
+    numerator_function = substitute_numerator_coeffs(order_numerator, order_denominator, numerator_coeff, numerator_function, denominator_coeff, taylor_coeffs)
+#    print(numerator_function)
+
+    numerator_function = numerator_function.subs(
+        [(old, new) for old,new in zip(symbols_denom, 
+                                       b.ravel())]
+    )
+    #print(numerator_function)
+    return numerator_function, denominator_function
