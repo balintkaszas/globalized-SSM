@@ -3,23 +3,22 @@ from itertools import product
 import numpy as np
 
 
-def generate_tensor(symbols, N):
-    # Create an empty list to store each term
-    tensor = []
-    
-    # Generate all combinations of powers including zero up to N
-    range_list = [range(N + 1) for _ in symbols]
-    
-    # Iterate over the Cartesian product of [0, 1, ..., N] for each symbol
-    powers = []
-    for power in product(*range_list):
-        # Only consider combinations where the sum of powers is <= N
-        term = sy.prod([s**p for s, p in zip(symbols, power)])
-        tensor.append(term)
-        powers.append(power)
-    return tensor, powers
-
 def generate_powers_uptoorder_square(dimension, M):
+    """
+    Generates the powers in the multivariate monomial terms up to order M, i.e., x_1^i * x_2^j * x_3^k for i,j,k = 0,1,...,M. 
+
+    Parameters
+    ----------
+    dimension : int
+        Number of variables
+    M : int
+        Order of the polynomial
+
+    Returns
+    -------
+    array
+        array of powers [i,j,k]
+    """
     pows = []
     range_list = [range(M + 1) for _ in range(dimension)]
     for power in product(*range_list):
@@ -28,10 +27,14 @@ def generate_powers_uptoorder_square(dimension, M):
 
 def generate_polynomial_from_tensor(variables, powers, coefficients):
     """Given a list of variables, powers, and coefficients, generate a polynomial.
-    Args:
+    Parameters
+    ----------
         variables (list): list of sympy variables
         powers (array): list of powers of each variable: contains [i,j,k] such that C_{ijk} * x^i * y^j * z^k
         coefficients (array):  tensor of coefficients: C_{ijk}: [i,j,k,...]
+    Returns
+    -------
+        polynomial (sympy expression): polynomial expression
     """
     polynomial = 0
     for p in powers:
@@ -69,9 +72,28 @@ def generate_polynomial_from_indexed(variables, indexed, order, include_bias = T
 
 
 def taylor_approximation_2d(f, x0, y0, order=2):
-    # analytical computation of a 2D Taylor expansion around x0, y0
+    """
+    Analytical computation of a 2D Taylor expansion around (x0, y0).
+    f(x,y) = f(x_0, y_0) + Df(x_0,y_0)*(x-x_0, y-y_0) + 1/2 D^2f(x_0,y_0)*(x-x_0, y-y_0)^2 + ...
+
+    Parameters
+    ----------
+    f : sympy expression
+        Function to approximante
+    x0 : float
+        x0 coordinate of the expansion point
+    y0 : float
+        y0 coordinate of the expansion point
+    order : int, optional
+        maximal order to compute, by default 2
+
+    Returns
+    -------
+    tuple: sympy expression, array
+        Sympy polynomial expression and corresponding coefficient tensor 
+    """
     x, y = sy.symbols('x y')
-    taylor_approx = 0#f.subs({x: x0, y: y0})
+    taylor_approx = f.subs({x: x0, y: y0})
     
     for i in range(0, order + 1):
         for j in range(i + 1):

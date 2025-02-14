@@ -10,7 +10,7 @@ import scipy as sc
 
 class Coefficient:
     """ A class to represent a coefficient in a power series. Contains two representations.
-    
+    Indexed is a sympy Indexed object, e.g. n_{ijk}. Coefficient tensor is a numpy array containing the coefficients
     """
     def __init__(self, name, dimensions):
         """ Initialize the coefficient with a name and the number of dimensions. """
@@ -23,6 +23,18 @@ class Coefficient:
     
 
 def pade_lsq(an, m, n=None):
+    """Return the Pade approximant of order [m/n] of a univariate power series, given by its Taylor coefficients an.
+    This is the same implementation found in scipy.interpolate. See https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.pade.html for more information.
+    The solution of the linear system of equations is done using the least squares method instead of linalg.solve, as in scipy. 
+
+    Parameters:
+        an (array): Taylor coefficients
+        m (int): Order of the numerator
+        n (int, optional): Order of the denominator. Default setting is m + n = len(an) -1
+
+    Returns:
+        p,q: The Pade approximant p/q of the power series an, where p and q are polynomials.
+    """
  
     an = np.asarray(an)
     if n is None:
@@ -48,64 +60,80 @@ def pade_lsq(an, m, n=None):
     return np.poly1d(p[::-1]), np.poly1d(q[::-1])
 
 
-def robust_pade(an, m, n = None, tol = 1e-30):
+def robust_pade(an, m, n = None):
+    """Returns the robust Pade approximant, as introduced by P. Gonnet, S. Guttel, L. N. Trefethen,  Robust Pad´e Approximation via SVD. SIAM Review, 2013. 
+    The order of the approximant is [m/n]. The implementation is a translation of the Chebfun implementation of the robust Pade approximant. See https://github.com/chebfun/chebfun/blob/master/padeapprox.m for more information.
+
+    Parameters:
+        an (array): Taylor coefficients
+        m (int): Order of the numerator
+        n (int, optional): Order of the denominator. Default setting is m + n = len(an) -1
+        tol (float, optional): Relative tolerance. Defaults to 1e-30.
+
+    Returns:
+        p,q: The Pade approximant p/q of the power series an, where p and q are polynomials.
+    """
+
     # Based on the chebfun implementation of the robust Pade approximant
     if n is None:
         n = len(an) - 1 - m
         if n < 0:
             raise ValueError("Order of q <m> must be smaller than len(an)-1.")
-    if n < 0:
+    if n <= 0:
         raise ValueError("Order of p <n> must be greater than 0.")
     N = m + n
     if N > len(an)-1:
         raise ValueError("Order of q+p <m+n> must be smaller than len(an).")
     an = an[:N+1]
+
+
     
     # Ensure that an has enough length
-    c = np.concatenate([an[:], np.zeros(m + n + 1 - len(an))])
+    c = np.pad(an[:N+1], (0, max(0, m + n + 1 - len(an))), 'constant')
     c = c[:m + n + 1]
+    row = np.concatenate([[c[0]], np.zeros(n)])
+    col = c
+    Z = sc.linalg.toeplitz(col[:m+n+1], row[:n+1])
+    C = Z[m+1:m+n+1, :]
+    if n > 0:
+        U, S, V = np.linalg.svd(C, full_matrices=True)
+        # Null vector gives b
+        b = V[-1,:]
+        # Reweighted QR for better zero preservation
+        D = np.diag(np.abs(b) + np.sqrt(np.finfo(float).eps))
+        Q, R = np.linalg.qr((C @ D).T)
 
-    # Compute absolute tolerance
-    ts = tol * np.linalg.norm(c)
-
-    if np.linalg.norm(c[:m+1], np.inf) <= tol * np.linalg.norm(c, np.inf):  # Special case r = 0
-        a = np.array([0])
-        b = np.array([1])
-        mu = -np.inf
-        nu = 0
-    else:  # General case
-        row = np.concatenate([[c[0]], np.zeros(n)])
-        col = c
-
-        Z = sc.linalg.toeplitz(col[:m+n+1], row[:n+1])
-
-        C = Z[m+1:m+n+1, :]
-
-        if n > 0:
-            U, S, V = np.linalg.svd(C, full_matrices=True)
-            # Null vector gives b
-            b = V[-1,:]
-            # Reweighted QR for better zero preservation
-            D = np.diag(np.abs(b) + np.sqrt(np.finfo(float).eps))
-            Q, R = np.linalg.qr((C @ D).T)
-
-            # Compensate for reweighting
-            b = D @ Q[:, -1]
-            b /= np.linalg.norm(b)
-
-            # Compute a
-            a = Z[:m+1, :n+1] @ b
-            
+        # Compensate for reweighting
+        b = D @ Q[:, -1]
+        b /= np.linalg.norm(b)
+        # Compute a
+        a = Z[:m+1, :n+1] @ b
 
     return np.poly1d(a[::-1]), np.poly1d(b[::-1])
 
 
-def vector_pade(taylor_coeffs):
-    return
 
 
 def convert_to_pade_1d(taylor_coeffs, order_numerator, order_denominator, use_robust = False):
-    """ Convert a Taylor series to a Pade approximant in 1D. """
+    """
+    Wrapper function to convert a univariate Taylor series to an order [m/n] Pade approximant, using either the least squares method or the robust method.
+
+    Parameters
+    ----------
+    taylor_coeffs : array
+        Coefficients of the Taylor series
+    order_numerator : int
+        Numerator order (m)
+    order_denominator : int
+        Denominator order (n)
+    use_robust : bool, optional
+        Use robust implementation, by default False
+
+    Returns
+    -------
+    polynomial, polynomial
+        p,q: The Pade approximant p/q of the power series an, where p and q are polynomials.
+    """
     if use_robust:
         numerator, denominator = robust_pade(taylor_coeffs, m = order_numerator, n = order_denominator)    
     else:
@@ -226,7 +254,8 @@ def swap_symbols_in_equations(equations, symbols, vectorized_symbols):
 
 def prepare_linear_system(equations, vectorized_symbols):
     eq, c = _linear_eq_to_dict(equations, vectorized_symbols) # this bit is copied from sympy without the type check
-    # was AB = sy.linear_eq_to_matrix(equations, vectorized_symbols)
+    # this allows for complex input as well
+    # was AB = sy.linear_eq_to_matrix(equations, vectorized_symbols), which does not allow for complex input
 
     n, m = shape = len(eq), len(vectorized_symbols)
     ix = dict(zip(vectorized_symbols, range(m)))
