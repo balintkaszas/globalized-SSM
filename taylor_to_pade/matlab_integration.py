@@ -258,3 +258,42 @@ def extract_coefficients_1d(expression, variable, size):
     coeffs = sy.Poly(expression, variable).all_coeffs()[::-1]
     coeffs = np.array(np.real([sy.re(c) for c in coeffs]), dtype=float)
     return coeffs
+
+
+
+def extract_gen_new_nonautonomous(matt, harmonic_index, label):
+    """
+    Extracts the coefficients and indices from a matlab-style dictionary for a non-autonomous system.
+    Parameters
+    ----------
+    matt : dict
+        A dictionary containing the coefficients and indices of the polynomial.
+    harmonic_index : int
+        The index of the harmonic to extract.
+    label : str
+        The label of the polynomial to extract.
+    Returns
+    -------
+    mat_array : list of dicts
+        A list of dictionaries containing the coefficients and indices of the polynomial.
+    """
+    mat_array = []
+    matt = matt[label][harmonic_index][0][1]
+    order = len(matt)
+    for i in range(order):
+        dictt = {}
+        if matt['coeffs'][i].shape[0]>0:
+            if isinstance(matt['coeffs'][i][0], sp.sparse.spmatrix):
+                dictt['coeffs'] = matt['coeffs'][i][0].toarray()
+            else:
+                dictt['coeffs'] = matt['coeffs'][i]
+            if isinstance(matt['ind'][i][0], sp.sparse.spmatrix):
+                dictt['ind'] = np.array(matt['ind'][i][0].toarray(), dtype=int)
+            else:
+                dictt['ind'] = np.array(matt['ind'][i][0], dtype= int)
+#            dictt['ind'] = matt['ind'][i][0].toarray()
+        else:
+            dictt['coeffs'] = []
+            dictt['ind'] = []
+        mat_array.append(dictt)
+    return mat_array
