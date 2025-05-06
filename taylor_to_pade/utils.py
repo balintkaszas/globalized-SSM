@@ -151,7 +151,6 @@ def convert_to_polar(variables, equations):
 
 
 def backbone_curve_and_damping_curve(r_variables, phidot_eq, rdot_eq):
-    # TODO: olny for single DOF for now
     # returns tuples, first element is a callable, second element is the symbolic expression
     backbone_callable = sy.lambdify(r_variables[0], phidot_eq[0])
     damping_callable = sy.lambdify(r_variables[0], -rdot_eq[0]/r_variables[0])
@@ -167,20 +166,6 @@ def discard_small_coeffs(expr, tolerance = 1e-15):
         if np.abs(get_coeff(t)) > tolerance:
             newexpr += t
     return newexpr
-
-
-# def estimate_poles_and_residues(p, q, tol = 1e-14):
-#     """
-#     Estimate the poles and residues of a rational function p/q.
-#     Parameters
-#     ----------
-#     p : sympy expression
-        
-#     poles = q.roots()
-
-#     t = max(tol, 1e-7)
-#     residues = t * (p(poles + t) / q(poles + t) - p(poles - t) / q(poles - t)) / 2
-#     return poles, residues
 
 
 def generate_list_of_taylor_approximants(polynomial_expressions, base, max_order = 30):

@@ -3,7 +3,7 @@ from taylor_to_pade.utils import generate_powers_uptoorder_square, generate_poly
 from taylor_to_pade.converter import convert_to_pade_1d, convert_to_pade_2d, Coefficient, convert_to_pade_2d_robust
 
 class TaylorSeries:
-    """Represents a multivatiate Taylor series."""
+    """Represents a multivatiate Taylor series. """
     def __init__(self, coefficients,
                 order,
                 base = [sy.Symbol('x')]):

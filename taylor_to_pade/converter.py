@@ -13,7 +13,12 @@ class Coefficient:
     Indexed is a sympy Indexed object, e.g. n_{ijk}. Coefficient tensor is a numpy array containing the coefficients
     """
     def __init__(self, name, dimensions):
-        """ Initialize the coefficient with a name and the number of dimensions. """
+        """ Initialize the coefficient with a name and the number of dimensions. 
+        Parameters:
+        -------
+            name (str): name of the coefficient, e.g. 'n'
+            dimensions (int): number of dimensions of the coefficients, i.e., the number of indices.        
+        """
         # needed to keep track of yet undetermined coefficients
         self.indices = [sy.symbols('i_%s' %ii, cls=sy.Idx) for ii in range(dimensions)] # i_1, i_2, ...
         self.Indexed = sy.Indexed(name, tuple(self.indices)) # n_{ijk}
@@ -141,6 +146,22 @@ def convert_to_pade_1d(taylor_coeffs, order_numerator, order_denominator, use_ro
     return numerator, denominator
 
 def generate_equations_LHS_alpha_beta_1(indexed_coeff, r, s, taylor_coeff):
+    """Generate the left-hand side of the equations matching the r, r-s order of the Taylor series. The equations are generated in a way that is compatible with sympy's Eq function.
+    Parameters
+    ----------
+    indexed_coeff : sympy.Indexed
+        The indexed coefficient to be used in the equations.
+    r : int
+        index1. Assuming this is smaller than order_denom.
+    s : int
+        index2. Assuming this is smaller than order_num.
+    taylor_coeff : sympy.Indexed
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    lhs : sympy.Add
+        The left-hand side of the equations.
+    """
     lhs = 0
     
     for k in range(0, r + 1):
@@ -153,6 +174,22 @@ def generate_equations_LHS_alpha_beta_1(indexed_coeff, r, s, taylor_coeff):
 
 
 def generate_equations_LHS_alpha_beta_1_robust(indexed_coeff, order_denom, r, s, taylor_coeff):
+    """Generate the left-hand side of the equations matching the r, r-s order of the Taylor series for the robust Pade approximants. The equations are generated in a way that is compatible with sympy's Eq function.
+    Parameters
+    ----------
+    indexed_coeff : sympy.Indexed
+        The indexed coefficient to be used in the equations.
+    r : int
+        index1. Assuming this is smaller than order_denom.
+    s : int
+        index2. Assuming this is smaller than order_num.
+    taylor_coeff : sympy.Indexed
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    lhs : sympy.Add
+        The left-hand side of the equations.
+    """
     lhs = 0
     for k in range(0, r + 1):
         for n1 in range(0, k + 1):
@@ -163,6 +200,22 @@ def generate_equations_LHS_alpha_beta_1_robust(indexed_coeff, order_denom, r, s,
     return lhs
 
 def generate_equations_LHS_alpha_beta_2(indexed_coeff, order_denom, r, s, taylor_coeff):
+    """Generate the left-hand side of the equations matching the r, r-s order of the Taylor series. The equations are generated in a way that is compatible with sympy's Eq function.
+    Parameters
+    ----------
+    indexed_coeff : sympy.Indexed
+        The indexed coefficient to be used in the equations.
+    r : int
+        index1. Assuming this is larger than order_denom.
+    s : int
+        index2. Assuming this is smaller than order_num.
+    taylor_coeff : sympy.Indexed
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    lhs : sympy.Add
+        The left-hand side of the equations.
+    """
     lhs = 0
     for k in range(0, order_denom +1 ):
         for n1 in range(0, k + 1):
@@ -172,12 +225,26 @@ def generate_equations_LHS_alpha_beta_2(indexed_coeff, order_denom, r, s, taylor
     return lhs
 
 def generate_equations_robust_denominator(order_numerator, order_denominator, denominator_coeff, taylor_coeffs):
-    # set up the homogeneous equations. 
+    """Generate the equations to compute the denominator of the Pade approximant. The equations are generated in a way that is compatible with sympy's Eq function.
+    Parameters
+    ----------
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    taylor_coeffs : array-like
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    eq : list
+        A list of sympy equations representing the equations to determine the denominator of the Pade approximant.
+    """
     eq = []
     for r in range(order_numerator+1, order_numerator  + order_denominator + 1):
         for s in range(r + 1):
             lhs = generate_equations_LHS_alpha_beta_2(denominator_coeff, order_denominator, r, s, taylor_coeffs)
-            #print("eq2:", s, r-s)
 
             if lhs != 0:  # exclude the trivial equation 0=0
                 eq.append(sy.Eq(lhs, 0))
@@ -185,6 +252,22 @@ def generate_equations_robust_denominator(order_numerator, order_denominator, de
     return eq
 
 def generate_symbols_robust(order_numerator, order_denominator, denominator_coeff):
+    """Generate the symbols to be used in the equations for the denominator of the Pade approximant.
+    Parameters
+    ----------
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    Returns
+    -------
+    symbs : list
+        A list of multi-index sympy symbols representing the coefficients of the denominator polynomial.
+    vectorized_symbols : array
+        A list of single-index sympy symbols representing the coefficients of the denominator polynomial.
+    """
     orders_for_numerator = generate_powers_uptoorder_bivariate(order_numerator)
     orders_for_denominator = generate_powers_uptoorder_bivariate(order_denominator)
     symbs = []
@@ -197,6 +280,26 @@ def generate_symbols_robust(order_numerator, order_denominator, denominator_coef
     return symbs, vectorized_symbols
 
 def substitute_numerator_coeffs(order_numerator, order_denominator, numerator_coeff, numerator_polynomial, denominator_coeff, taylor_coeffs):
+    """Substitute the coefficients of the numerator to generate a single sympy expression.
+    Parameters
+    ----------
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    numerator_coeff : sympy.Indexed
+        The indexed coefficient of the numerator polynomial.
+    numerator_polynomial : sympy.Add
+        The polynomial representing the numerator.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    taylor_coeffs : array-like
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    numerator_polynomial : sympy.Add
+        The polynomial representing the numerator after substitution.
+    """
     for r in range(0, order_numerator+1):
         for s in range(0, r+1):
             #print("eq1:", s, r-s)
@@ -207,21 +310,36 @@ def substitute_numerator_coeffs(order_numerator, order_denominator, numerator_co
 
 
 def generate_equations(order_numerator, order_denominator, numerator_coeff, denominator_coeff, taylor_coeffs):
+    """Generate the equations to compute the Pade approximant. Both the homogeneous and non-homogeneous equations are generated.
+    Parameters
+    ----------
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    numerator_coeff : sympy.Indexed
+        The indexed coefficient of the numerator polynomial.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    taylor_coeffs : array-like
+        The indexed coefficient of the Taylor series.
+    Returns
+    -------
+    eq : list
+        A list of sympy equations representing the equations to determine the denominator and numerator of the.
+    """
     eq1 = []
     for r in range(0, order_numerator+1):
         for s in range(0, r+1):
-            #print("eq1:", s, r-s)
             rhs = numerator_coeff.Indexed.subs([(numerator_coeff.indices[0], s), (numerator_coeff.indices[1], r - s)])
             lhs = generate_equations_LHS_alpha_beta_1(denominator_coeff, r, s, taylor_coeffs)
             ee = sy.Eq(lhs, rhs)
-            if ee is not True:
+            if ee is not True: # continuing to add equations that are not trivial
                 eq1.append(ee)
     eq2 = []
     for r in range(order_numerator+1, order_denominator  + order_denominator + 1):
         for s in range(r + 1):
             lhs = generate_equations_LHS_alpha_beta_2(denominator_coeff, order_denominator, r, s, taylor_coeffs)
-            #print("eq2:", s, r-s)
-
             if lhs != 0:  # exclude the trivial equation 0=0
                 eq2.append(sy.Eq(lhs, 0))
 
@@ -285,33 +403,45 @@ def generate_powers_uptoorder_bivariate(M):
 
 
 def convert_to_pade_2d(variables, taylor_coeffs, order_numerator, order_denominator, numerator_coeff, denominator_coeff ):
-    start = time.time()
-    #print('Start')
+    """Convert a 2D Taylor series to a Pade approximant of order [m/n]. We generate the set of linear equations with the helper functions above and use the least squares method to solve the linear system. The solution is then used to generate the numerator and denominator polynomials.
+    The denominator is fixed to 1, i.e. d_00 = 1. The numerator is then computed by substituting the coefficients of the denominator into the numerator polynomial.
+    The numerator and denominator polynomials are returned as sympy expressions.
+    The function is a wrapper around the generate_equations, generate_symbols, prepare_linear_system and generate_polynomial_from_indexed functions.
+    Parameters
+    ----------
+    variables : list
+        A list of sympy symbols representing the variables in the Taylor series.
+    taylor_coeffs : array-like
+        The indexed coefficient of the Taylor series.
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    numerator_coeff : sympy.Indexed
+        The indexed coefficient of the numerator polynomial.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    Returns
+    -------
+    numerator_function : sympy.Add
+        The polynomial representing the numerator of the Pade approximant.
+    denominator_function : sympy.Add
+        The polynomial representing the denominator of the Pade approximant.
+    """
     equations = generate_equations(order_numerator, order_denominator, numerator_coeff, denominator_coeff, taylor_coeffs)
-    one = time.time()
-    #print('equations1', one - start)
     symbols, vectorized_symbols = generate_symbols(order_numerator, order_denominator, numerator_coeff, denominator_coeff)
-    one = time.time()
-    #print('equations2', one - start)
     equations = [e.subs(denominator_coeff.Indexed.subs([(denominator_coeff.indices[0], 0),
                                                          (denominator_coeff.indices[1],0)]),
                                                            1) for e in equations] # fix d_00 = 1
     coeffmatrix, rhsvector = prepare_linear_system(equations, symbols)
 
     two = time.time()
-    #print('linear system', two - start)
     
 
     solution, aaa, _, _ = np.linalg.lstsq(coeffmatrix, rhsvector, rcond = None)
-    print(rhsvector.shape)
-
-    three = time.time()
-    #print('LSTSQ', three - start)
-
 
     numerator_function = generate_polynomial_from_indexed(variables,numerator_coeff, order_numerator, include_bias=True)
     denominator_function = generate_polynomial_from_indexed(variables, denominator_coeff, order_denominator, include_bias=False) # set d_00 = 1
-    #pade_function = numerator_function / denominator_function
     numerator_function = numerator_function.subs(
         [(old, new) for old,new in zip(symbols, 
                                        solution.ravel())]
@@ -326,11 +456,36 @@ def convert_to_pade_2d(variables, taylor_coeffs, order_numerator, order_denomina
 
 
 def convert_to_pade_2d_robust(variables, taylor_coeffs, order_numerator, order_denominator, numerator_coeff, denominator_coeff ):
+    """Convert a 2D Taylor series to a Pade approximant of order [m/n]. We generate the set of linear equations with the helper functions above and use the least squares method to solve the linear system. The solution is then used to generate the numerator and denominator polynomials.
+    The denominator is fixed to 1, i.e. d_00 = 1.
+    The numerator and denominator polynomials are returned as sympy expressions.
+    The function is a wrapper around the generate_equations, generate_symbols, prepare_linear_system and generate_polynomial_from_indexed functions.
+
+    This function uses the robust Pade approximant method, i.e. it uses an SVD to compute the coefficients of the denominator first. 
+    Parameters
+    ----------
+    variables : list
+        A list of sympy symbols representing the variables in the Taylor series.
+    taylor_coeffs : array-like
+        The indexed coefficient of the Taylor series.
+    order_numerator : int
+        The order of the numerator polynomial.
+    order_denominator : int
+        The order of the denominator polynomial.
+    numerator_coeff : sympy.Indexed
+        The indexed coefficient of the numerator polynomial.
+    denominator_coeff : sympy.Indexed
+        The indexed coefficient of the denominator polynomial.
+    Returns
+    -------
+    numerator_function : sympy.Add
+        The polynomial representing the numerator of the Pade approximant.
+    denominator_function : sympy.Add
+        The polynomial representing the denominator of the Pade approximant.
+    """
     start = time.time()
-    #print('Start')
     equations_denom = generate_equations_robust_denominator(order_numerator, order_denominator, denominator_coeff, taylor_coeffs)
     one = time.time()
-    #print('equations1', one - start)
     symbols_denom, vectorized_symbols_denom = generate_symbols_robust(order_numerator, order_denominator, denominator_coeff)
     one = time.time()
     coeffmatrix, rhsvector = prepare_linear_system(equations_denom, symbols_denom) # rhsvector is simply zero here. 
@@ -338,12 +493,9 @@ def convert_to_pade_2d_robust(variables, taylor_coeffs, order_numerator, order_d
     U, S, V = np.linalg.svd(coeffmatrix, full_matrices=True)
     # Null vector gives b
     b = V[-1,:]
-    # Reweighted QR for better zero preservation
     D = np.diag(np.abs(b) + np.sqrt(np.finfo(float).eps))
     Q, R = np.linalg.qr((coeffmatrix @ D).T)
     two = time.time()
-    #print('linear system', two - start)
-        # Compensate for reweighting
     b = D @ Q[:, -1]
     b /= np.linalg.norm(b)
     denominator_function = generate_polynomial_from_indexed(variables, denominator_coeff, order_denominator, include_bias=True) # set d_00 = 1
@@ -351,19 +503,12 @@ def convert_to_pade_2d_robust(variables, taylor_coeffs, order_numerator, order_d
         [(old, new) for old,new in zip(symbols_denom, 
                                        b.ravel())]
     )
-    #print(symbols_denom)
 
-    
-    
-    #print(denominator_function)
     numerator_function = generate_polynomial_from_indexed(variables,numerator_coeff, order_numerator, include_bias=True)
-    #pade_function = numerator_function / denominator_function
     numerator_function = substitute_numerator_coeffs(order_numerator, order_denominator, numerator_coeff, numerator_function, denominator_coeff, taylor_coeffs)
-#    print(numerator_function)
 
     numerator_function = numerator_function.subs(
         [(old, new) for old,new in zip(symbols_denom, 
                                        b.ravel())]
     )
-    #print(numerator_function)
     return numerator_function, denominator_function

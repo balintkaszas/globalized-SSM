@@ -3,7 +3,7 @@ import sympy as sy
 import scipy as sp
 
 
-### Collection of functions to convert between different representations of polynomials in matlab and scipy. Very experimental.
+### Collection of functions to convert between different representations of polynomials in matlab and scipy. Since the representation of the polynomials in matlab is not very consistent across different versions of SSMTool, one might need to adapt the functions to the specific version of SSMTool used.
 
 def get_coeff(expr):
     """
@@ -291,7 +291,6 @@ def extract_gen_new_nonautonomous(matt, harmonic_index, label):
                 dictt['ind'] = np.array(matt['ind'][i][0].toarray(), dtype=int)
             else:
                 dictt['ind'] = np.array(matt['ind'][i][0], dtype= int)
-#            dictt['ind'] = matt['ind'][i][0].toarray()
         else:
             dictt['coeffs'] = []
             dictt['ind'] = []
