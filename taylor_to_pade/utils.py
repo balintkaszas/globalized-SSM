@@ -1,6 +1,7 @@
 import sympy as sy
 from itertools import product
 import numpy as np
+from taylor_to_pade import approximant, approximant, matlab_integration
 
 
 def generate_powers_uptoorder_square(dimension, M):
@@ -168,9 +169,180 @@ def discard_small_coeffs(expr, tolerance = 1e-15):
     return newexpr
 
 
-def estimate_poles_and_residues(p, q, tol = 1e-14):
-    poles = q.roots()
+# def estimate_poles_and_residues(p, q, tol = 1e-14):
+#     """
+#     Estimate the poles and residues of a rational function p/q.
+#     Parameters
+#     ----------
+#     p : sympy expression
+        
+#     poles = q.roots()
 
-    t = max(tol, 1e-7)
-    residues = t * (p(poles + t) / q(poles + t) - p(poles - t) / q(poles - t)) / 2
-    return poles, residues
+#     t = max(tol, 1e-7)
+#     residues = t * (p(poles + t) / q(poles + t) - p(poles - t) / q(poles - t)) / 2
+#     return poles, residues
+
+
+def generate_list_of_taylor_approximants(polynomial_expressions, base, max_order = 30):
+    """
+    Generate a list of Taylor approximants from a list of polynomial expressions.
+    Parameters
+    ----------
+    polynomial_expressions : list of sympy expressions
+        List of polynomial expressions to generate Taylor approximants from.
+    base : list
+        List of (complex) sympy variables.
+    max_order : int
+        Maximum order of the Taylor approximants.
+    Returns
+    -------
+    list_of_taylor : list of TaylorSeries objects
+        List of Taylor approximants.
+    """
+    list_of_taylor = []
+    for p in polynomial_expressions:
+        coeff = matlab_integration.extract_coefficients(p[0], base, max_order)
+        list_of_taylor.append(approximant.TaylorSeries(coeff, max_order, base = base))
+    return list_of_taylor
+
+
+def generate_list_of_pade_approximants(list_polynomial, base,
+                                        order_num=3,
+                                          order_denom=3,
+                                            use_robust = False):
+    """
+    Generate a list of Pade approximants from a list of polynomials.
+    Parameters
+    ----------
+    list_polynomial : list of TaylorSeries objects
+        List of polynomials to generate Pade approximants from.
+    order_num : int
+        Order of the numerator polynomial.
+    order_denom : int
+        Order of the denominator polynomial.
+    base : list
+        List of (complex) sympy variables.
+    use_robust : bool
+        Whether to use the robust Pade approximant. Default is False.
+    Returns
+    -------
+    list_pade : list
+        List of Pade approximants.
+    """
+    list_pade = []
+    for p in list_polynomial:
+        pad = approximant.PadeApproximant(order_numerator=order_num,
+                                                         order_denominator=order_denom,
+                                                         base = base)
+        pad.initialize_from_taylor(p.coefficients, use_robust = use_robust)
+        list_pade.append(pad)
+    return list_pade
+
+
+
+
+def compute_polar_reduced_dyn_Taylor(reduced_dynamics_expressions, 
+                                     base, max_order = 30, tolerance = 1e-10):
+    """
+    Given a list of reduced dynamics expressions, return the reduced dynamics in polar form to a given order.
+    Parameters
+    ----------
+    reduced_dynamics_expressions : list of sympy expressions
+        List of reduced dynamics expressions to generate Taylor approximants from.
+    base : list
+        List of (complex) sympy variables.
+    max_order : int
+        Maximum order of the Taylor approximants.
+    tolerance : float
+        Tolerance for small coefficients. Default is 1e-10. if None, no coefficients are discarded.
+    Returns
+    -------
+    red_dynamics : TaylorSeries object 
+        reduced dynamics up to a given order.
+    frequency_Taylor : TaylorSeries object
+        Taylor series of the frequency, i.e., the theta_dot dynamics
+    damping_Taylor : TaylorSeries object
+        Taylor series of the rdot dynamics
+    damping_curve_taylor : callable
+        lambda function for the damping curve -rdot/r
+    radial_variables : list
+        List of radial variables.
+    angle_variables : list
+        List of angular variables.
+    """
+    red_dynamics = []
+    for r in reduced_dynamics_expressions:
+        coeff = matlab_integration.extract_coefficients(r[0], base, max_order)
+        red_dynamics.append(approximant.TaylorSeries(coeff, max_order, base = base))
+    if tolerance is not None:
+        for r in red_dynamics:
+            r.polynomial = discard_small_coeffs(r.polynomial, tolerance = tolerance)
+    radial_variables, angle_variables, r_equations, phi_equations = convert_to_polar(base, [r.polynomial for r in red_dynamics])
+    
+    coeff = matlab_integration.extract_coefficients_1d(phi_equations[0], radial_variables, max_order)
+    frequency_Taylor = approximant.TaylorSeries(coeff, max_order, base = radial_variables)
+    coeff = matlab_integration.extract_coefficients_1d(r_equations[0], radial_variables, max_order)
+    damping_Taylor = approximant.TaylorSeries(coeff, max_order, base = radial_variables)
+    damping_curve_taylor_ = sy.lambdify(radial_variables[0], -r_equations[0]/radial_variables[0], 'numpy')
+    damping_curve_taylor = lambda x : np.real(damping_curve_taylor_(x))
+    return red_dynamics, frequency_Taylor, damping_Taylor, damping_curve_taylor, radial_variables, angle_variables
+
+def compute_polar_reduced_dyn_pade(frequency,
+                                    damping,
+                                    radial_variables,
+                                      order_num = 3,
+                                        order_denom = 3,
+                                          use_robust = False):
+    """
+    Given a list of reduced dynamics expressions, return the reduced dynamics in polar form to a given order.
+    Parameters
+    ----------
+    frequency : TaylorSeries object
+        Frequency expression to generate Pade approximants from.
+    damping : TaylorSeries object
+        Damping expression to generate Pade approximants from.
+    radial_variables : list
+        List of radial variables.
+    order_num : int
+        Order of the numerator polynomial.
+    order_denom : int
+        Order of the denominator polynomial.
+    use_robust : bool
+        Whether to use the robust Pade approximant. Default is False.
+    Returns
+    -------
+    frequency_Pade : PadeApproximant object
+        Pade approximant of the frequency.
+    damping_Pade : PadeApproximant object
+        Pade approximant of the damping.
+    """
+    frequency_Pade = approximant.PadeApproximant(order_denominator=order_num, order_numerator=order_denom, base = radial_variables)
+    damping_Pade = approximant.PadeApproximant(order_denominator=order_num, order_numerator=order_denom, base = radial_variables)
+    damping_Pade.initialize_from_taylor(damping.coefficients, use_robust = use_robust)
+    frequency_Pade.initialize_from_taylor(frequency.coefficients, use_robust = use_robust)
+    return frequency_Pade, damping_Pade
+
+
+
+def get_resp_at_r(r, idx, parametrization):
+    """
+    Given a list of TaylorSeries or Pade approximants, return the maximal response of a given observable (idx) at a given radius r. The periodic orbit is assumed to be r*e^{iphi}. 
+    Parameters
+    ----------
+    r : float
+        Radius at which to evaluate the response.
+    idx : int
+        Index of the Pade approximant to evaluate.
+    parametrization : list
+        List of TaylorSeries or Pade approximants.
+    Returns
+    -------
+    response : float
+        Maximal response at the given radius.
+    """
+    phi_sample = np.linspace(0, 2*np.pi, 100)
+    z1 = r * np.exp(1j*phi_sample)
+    zz = np.vstack((z1, np.conjugate(z1))).reshape(2,-1)
+    response = np.real(parametrization[idx].evaluate(zz.T))
+    return np.max(np.abs(response))
+

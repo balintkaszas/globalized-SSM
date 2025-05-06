@@ -5,7 +5,74 @@ import scipy as sp
 
 ### Collection of functions to convert between different representations of polynomials in matlab and scipy. Very experimental.
 
+def get_coeff(expr):
+    """
+    Extracts the coefficients of a polynomial expression in sympy.
+    Parameters
+    ----------
+    expr : sympy expression
+        The polynomial expression to extract coefficients from.
+    Returns
+    -------
+    coeff : complex
+        The coefficient of the polynomial expression.
+    """
+    return expr.as_terms()[0][0][1][0][0] + 1j*expr.as_terms()[0][0][1][0][1]
+
+def discard_small_coeffs(expr, tolerance = 1e-15):
+    """
+    Discards small coefficients from a polynomial expression in sympy.
+    Parameters
+    ----------
+    expr : sympy expression
+        The polynomial expression to discard small coefficients from.
+    tolerance : float, optional
+        The tolerance for small coefficients. The default is 1e-15.
+    Returns
+    -------
+    expr : sympy expression
+        The polynomial expression with small coefficients discarded.
+    """
+    terms = sy.Add.make_args(expr)
+    newexpr = 0
+    for t in terms:
+        if np.abs(get_coeff(t)) > tolerance:
+            newexpr += t
+    return newexpr
+
+def discard_small_coeffs_pade(pade, tolerance = 1e-15):
+    """
+    Discards small coefficients from a Pade approximation in sympy.
+    Parameters
+    ----------
+    paded : sympy expression
+        The Pade approximation to discard small coefficients from.
+    tolerance : float, optional
+        The tolerance for small coefficients. The default is 1e-15.
+    Returns
+    -------
+    expr : sympy expression
+        The Pade approximation with small coefficients discarded.
+    """
+    num, denom = pade.as_numer_denom()
+    num = discard_small_coeffs(num, tolerance)
+    denom = discard_small_coeffs(denom, tolerance)
+    return num / denom
+
 def expand_multiindex(M, P):
+    """
+    Expand multiindices and coefficients from a matlab-style dictionary.
+    Parameters
+    ----------
+    M : dict
+        A dictionary containing the coefficients and indices of the polynomial.
+    P : array-like, shape (n_points, n_features)
+        The points at which to evaluate the polynomial.
+    Returns
+    -------
+    P_I : array-like, shape (n_points,)
+        The evaluated polynomial at the given points.
+    """
     nt = np.shape(P)[1] # number of points to evaluate
     C = M['coeffs']
     I = M['ind']
@@ -19,6 +86,19 @@ def expand_multiindex(M, P):
 
 
 def reduced_to_full(p, W0):
+    """
+    Convert a reduced representation of a polynomial to a full representation.
+    Parameters
+    ----------
+    p : array-like, shape (n_points, n_features)
+        The points at which to evaluate the polynomial.
+    W0 : list of dicts
+        A list of dictionaries containing the coefficients and indices of the polynomial.
+    Returns
+    -------
+    z : array-like, shape (n_points,)
+        The evaluated polynomial at the given points.
+    """
     N = np.shape(W0[0]['coeffs'])[0]
     z = np.zeros((N,1))*p[0]
     for i in range(len(W0)):
