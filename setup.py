@@ -5,12 +5,6 @@ setup(
     version='0.1.0',
     author='Balint Kaszas',
     packages=find_packages(),
-    install_requires=[
-        'numpy',  
-        'scipy',  
-        'matplotlib',
-        'sympy'
-    ],
     python_requires='>=3.7',
     include_package_data=True
 )
