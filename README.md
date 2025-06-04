@@ -36,8 +36,6 @@ from taylor_to_pade.approximant import TaylorSeries, PadeApproximant
 # define the Taylor coefficients of sin(x) and initialize a TaylorSeries object
 sine_coeffs = [0, 1, 0, -1/6, 0, 1/120, 0, -1/5040]
 sine_taylor = TaylorSeries(np.array(sine_coeffs), 3)
-
-plt.plot(single_peak.positive_diffraction_vectors, spectrum)
 ```
 
 The ```PadeApproximant``` object can then be used to convert the Taylor series to a rational function representation through Padé approximants. 
