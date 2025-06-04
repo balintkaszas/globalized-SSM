@@ -98,7 +98,7 @@ class PadeApproximant:
             self.ratio = self.numerator / self.denominator
             self.numpy_function = sy.lambdify(self.base, self.ratio, 'numpy')
         else:
-            raise NotImplementedError("Pade approximants are only implemented for 1D Taylor series.") 
+            raise NotImplementedError("Pade approximants are only implemented for 1D and 2D Taylor series.") 
 
         return 
     
