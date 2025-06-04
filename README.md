@@ -10,7 +10,7 @@ The implementation is based on uni- and multivariate Padé approximants as well 
 1. Clone the repository with the command
 
 ```
-git clone https://github.com/balintkaszas/gssm.git
+git clone https://github.com/balintkaszas/globlaized-SSM.git
 ```
 
 2. Install the dependencies with pip
